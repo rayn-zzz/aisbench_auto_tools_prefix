@@ -58,7 +58,7 @@ DEFAULT_PERFORMANCE_TEST = "default_perf"
 | --enable_think | bool | DeepSeek V3.1模型开启think功能，默认值false |
 | --test_accuracy | bool | 测试精度，仅支持gsm8k数据集，默认值false |
 | --npu_num | int | npu卡数，用于计算单卡吞吐，默认值1 |
-|--dataset_type| str | normal or prefix_cache，一般数据集or带前缀数据集（无语义），默认值normal|
+|--dataset_type| str | normal or prefix_cache，一般数据集or带前缀数据集，默认值normal|
 | --prefix_num | int | 前缀个数，默认值1 |
 | --repeat_rate| str | 数据集前缀重复率，默认值0.5，支持格式：百分比如 "50%" 或小数如 "0.5" |
 |--prefix_test| bool | 是否在全量数据集测试前，先测试一遍前缀，默认值false|
