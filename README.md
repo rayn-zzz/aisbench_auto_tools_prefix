@@ -2,9 +2,13 @@
 # 适用场景
 
 1、模型性能测试
+
 2、prefix cache性能测试
+
 3、指定gsm8k格式数据集的性能测试，如medium2
+
 4、指定gsm8k格式数据集的精度测试
+
 5、利于本工具生成数据集
 
 # 使用方法
@@ -111,22 +115,40 @@ ${prefix_data2}%^&${suffix_data2}
 **注：测试prefix cache功能需先预热前缀，保证跑完整数据集时存在命中**
 
 1、测试2k/2k不带前缀的gsm8k数据集性能
-`python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10`
+
+```
+python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10
+```
 
 2、测试2k/2k不带前缀的gsm8k数据集性能，开启**思考模式**
-`python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10 --enable_think`
+
+```
+python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10 --enable_think
+```
 
 3、测试2k/2k带前缀的gsm8k数据集性能，前缀个数1，数据集前缀重复率50%，dp 2，**先预热前缀**
-`python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10 --dataset_type prefix_cache --repeat_rate 0.5 --prefix_test --dp 2`
+
+```
+python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10 --dataset_type prefix_cache --repeat_rate 0.5 --prefix_test --dp 2
+```
 
 4、测试2k/2k带前缀的gsm8k数据集性能，前缀个数3，数据集前缀重复率73%，不预热前缀直接跑完整数据集
-`python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10 --dataset_type prefix_cache --repeat_rate 73% --seed 200 --prefix_num 3`
+
+```
+python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10 --dataset_type prefix_cache --repeat_rate 73% --seed 200 --prefix_num 3
+```
 
 5、测试指定数据集性能（仅限**gsm8k**格式）
-`python3 aisbench_test.py --dataset "/mnt/path_to_dataset/medium2.jsonl" --output_len 20 --concurrency 1024`
+
+```
+python3 aisbench_test.py --dataset "/mnt/path_to_dataset/medium2.jsonl" --output_len 20 --concurrency 1024
+```
 
 6、测试指定数据集精度（仅限**gsm8k**格式）
-`python3 aisbench_test.py --dataset "/mnt/path_to_dataset/precision_dataset.jsonl" --output_len 1024 --concurrency 64 --request_rate 4 --test_accuracy`
+
+```
+python3 aisbench_test.py --dataset "/mnt/path_to_dataset/precision_dataset.jsonl" --output_len 1024 --concurrency 64 --request_rate 4 --test_accuracy
+```
 
 ## 四、结果获取
 
@@ -139,9 +161,8 @@ ${prefix_data2}%^&${suffix_data2}
 3、已运行命令的aisbench日志：
 `aisbench_all.log` 或者 `outputs/default/时间戳/aisbench.log`
 
-4、命中率获取
+4、命中率获取：
 见打屏日志
-![image](https://wiki.huawei.com/vision-file-storage/api/file/download/upload-v2/WIKI202511048896614/42905312/d8b3a5ee7bc841449b66ad813f8775bd.png)
 
 # FAQ（常见问题）
 
@@ -149,12 +170,12 @@ ${prefix_data2}%^&${suffix_data2}
 
 解决方案：删除picked_ids.txt文件
 
-## 2、加载tokenizer报错![image](https://wiki.huawei.com/vision-file-storage/api/file/download/upload-v2/WIKI202511048896614/42777076/4b72848eb86145908c2e78b722f7f814.png)
+## 2、加载tokenizer报错
 
 解决方案：检查当前transformers版本是否适配模型，如GLM5需更新mindie/vllm镜像内transformers版本
 
-## 3、ais_bench: error: unrecognized arguments: --num-warmups![image](https://wiki.huawei.com/vision-file-storage/api/file/download/upload-v2/WIKI202511048896614/42934556/ebf6ba78424d41b5906b823014a0229c.png)
+## 3、ais_bench: error: unrecognized arguments: --num-warmups
 
 解决方案：修改aisbench_test.py第76行，删除 `--num-warmups 0`
-![image](https://wiki.huawei.com/vision-file-storage/api/file/download/upload-v2/WIKI202511048896614/42934926/372137b5ebf34b4cba7d853706b7f706.png)
+
 ※ `--num-warmups`参数为aisbench最新版本功能，使用时需配置为0，详情参考[aisbench github](https://github.com/AISBench/benchmark)官网，文档路径：docs/source_zh_cn/base_tutorials/all_params/cli_args.md
