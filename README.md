@@ -68,7 +68,9 @@ DEFAULT_PERFORMANCE_TEST = "default_perf"
 ### ※ 数据集生成逻辑
 
 前缀：随机挑选一条未使用的GSM8K数据，重复/截取到输入长度input_len
+
 后缀：随机挑选一条GSM8K数据（可能重复），重复/截取到固定长度
+
 完整数据集 = 前缀 + 3个随机token（--seed控制） + 后缀
 
 ### ※ 前缀数据集结构说明
