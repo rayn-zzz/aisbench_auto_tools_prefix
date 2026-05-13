@@ -71,9 +71,9 @@ def create_gsm8k_dataset(dataset_type, input_len, data_num, model_path, dataset_
 
 def generate_aisbench_command(DEFAULT_PERFORMANCE_TEST):
     if test_accuracy:
-        ais_bench_cmd = "ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --dump-eval-details"
+        ais_bench_cmd = f"ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --dump-eval-details --work-dir {OUTPUT_DIR}"
     else:
-        ais_bench_cmd = f"ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --mode perf --summarizer {DEFAULT_PERFORMANCE_TEST} --debug --num-warmups 0 2>&1 | tee aisbench.log"
+        ais_bench_cmd = f"ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --mode perf --summarizer {DEFAULT_PERFORMANCE_TEST} --work-dir {OUTPUT_DIR} --debug --num-warmups 0 2>&1 | tee aisbench.log"
     return ais_bench_cmd
 
 def generate_test_dataset(src_file, dst_dir):
