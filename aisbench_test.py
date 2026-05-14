@@ -71,7 +71,7 @@ def create_gsm8k_dataset(dataset_type, input_len, data_num, model_path, dataset_
 
 def generate_aisbench_command(DEFAULT_PERFORMANCE_TEST):
     if test_accuracy:
-        ais_bench_cmd = f"ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --dump-eval-details --work-dir {OUTPUT_DIR}"
+        ais_bench_cmd = f"ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --work-dir {OUTPUT_DIR} --dump-eval-details"
     else:
         ais_bench_cmd = f"ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --mode perf --summarizer {DEFAULT_PERFORMANCE_TEST} --work-dir {OUTPUT_DIR} --debug --num-warmups 0 2>&1 | tee aisbench.log"
     return ais_bench_cmd
@@ -120,6 +120,79 @@ def modify_aisbench_api(concurrency, output_len):
         os.path.join(os.getcwd(), "temp_api.py"),
         os.path.join(WORK_PATH, "ais_bench/benchmark/configs/models/vllm_api/vllm_api_chat_temp.py")
     )
+
+def get_pod_metrics_info(pod_info):
+    query_tokens, query_tokens_external,hit_tokens,hit_tokens_external = {},{},{},{}
+    for pod in pod_info:
+        ip,port = pod.split(":")
+        query_tokens[pod],query_tokens_external[pod] = get_prefix_queries_total(ip,port)
+        hit_tokens[pod], hit_tokens_external[pod] = get_prefix_hits_total(ip,port)
+    return query_tokens, query_tokens_external, hit_tokens, hit_tokens_external
+
+def cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tokens_external,
+                        query_tokens_new, query_tokens_external_new, hit_tokens_new, hit_tokens_external_new):
+    if not query_tokens or not query_tokens_external or not hit_tokens or not hit_tokens_external:
+        return
+    
+    # 定义列宽
+    col1_width = 15   # engine id
+    col2_width = 20   # hbm hit rate
+    col3_width = 20   # hbm(hit/query)
+    col4_width = 20   # external hit rate
+    col5_width = 20   # external(hit/query)
+    
+    # 按POD分组遍历
+    for pod, engines in sorted(query_tokens.items()):
+        # 准备数据行
+        data_rows = []
+        for engine_id, token in sorted(engines.items()):
+            query_hbm = query_tokens_new[pod][engine_id] - query_tokens[pod][engine_id]
+            hits_hbm = hit_tokens_new[pod][engine_id] - hit_tokens[pod][engine_id]
+            query_ex = query_tokens_external_new[pod][engine_id] - query_tokens_external[pod][engine_id]
+            hits_ex = hit_tokens_external_new[pod][engine_id] - hit_tokens_external[pod][engine_id]
+            
+            if query_hbm == 0:
+                hit_rate_str = "0%"
+                hit_detail = "0/0"
+            else:
+                hit_rate_str = format(hits_hbm / query_hbm, '.2%')
+                hit_detail = f"{hits_hbm}/{query_hbm}"
+            
+            if query_ex == 0:
+                hit_rate_ex_str = "0%"
+                hit_ex_detail = "0/0"
+            else:
+                hit_rate_ex_str = format(hits_ex / query_ex, '.2%')
+                hit_ex_detail = f"{hits_ex}/{query_ex}"
+            
+            data_rows.append({
+                'engine_id': str(engine_id),
+                'hbm_rate': hit_rate_str,
+                'hbm_detail': hit_detail,
+                'external_rate': hit_rate_ex_str,
+                'external_detail': hit_ex_detail
+            })
+        
+        # 定义表头
+        headers = ['engine_id', 'hbm_hit_rate', 'hbm(hit/query)', 'externel_hit_rate', 'externel(hit/query)']
+        
+        # 计算总宽度
+        total_width = col1_width + col2_width + col3_width + col4_width + col5_width + 8
+        
+        # 打印POD信息
+        print("\n" + "=" * total_width)
+        print(f"POD: {pod}")
+        print("=" * total_width)
+        
+        # 打印表头
+        print(f"{headers[0]:<{col1_width}} {headers[1]:<{col2_width}} {headers[2]:<{col3_width}} {headers[3]:<{col4_width}} {headers[4]:<{col5_width}}")
+        print("-" * total_width)
+        
+        # 打印数据行
+        for row in data_rows:
+            print(f"{row['engine_id']:<{col1_width}} {row['hbm_rate']:<{col2_width}} {row['hbm_detail']:<{col3_width}} {row['external_rate']:<{col4_width}} {row['external_detail']:<{col5_width}}")
+        
+        print("=" * total_width)
 
 if __name__ == '__main__':
     args = parse_arguments()
@@ -202,74 +275,41 @@ if __name__ == '__main__':
     if dataset_type == "prefix_cache":
         # 前缀数据集测试
         if prefix_test:
+            if not POD_INFO:
+                pod_info = [HOST_IP+":"+HOST_PORT]
+            else:
+                pod_info = POD_INFO
+            print(pod_info)
+            
             logging.info(f"[开始] 前缀数据集测试")
             modify_aisbench_api(str(dp),"1")
             dst_file = generate_test_dataset(src_file_prefix, dst_dir)
 
             # 命中率计算
-            query_tokens,query_tokens_external = get_prefix_queries_total(HOST_IP,HOST_PORT)
-            hit_tokens,hit_tokens_external = get_prefix_hits_total(HOST_IP,HOST_PORT)
+            query_tokens, query_tokens_external, hit_tokens, hit_tokens_external = get_pod_metrics_info(pod_info)
 
             os. system(ais_bench_cmd)
-            logging.info(f"[完成] 前缀数据集测试完成")
+            logging.info(f"[完成] 前缀数据集测试完成，结果保存在aisbench_result.csv")
 
-            query_tokens_new,query_tokens_external_new = get_prefix_queries_total(HOST_IP,HOST_PORT)
-            hit_tokens_new,hit_tokens_external_new = get_prefix_hits_total(HOST_IP,HOST_PORT)
-            if query_tokens_new and hit_tokens_new:
-                for key in query_tokens_new:
-                    logging.info(f"----------------------prefix cache metrics: engine {key}----------------------")
-                    # HBM 命中率
-                    logging.info(f"[prefix cache metrics: engine {key}] prefix cache查询的token数：{query_tokens_new[key] - query_tokens[key]}")
-                    logging.info(f"[prefix cache metrics: engine {key}] prefix cache命中的token数：{hit_tokens_new[key] - hit_tokens[key]}")
-                    if query_tokens[key] != query_tokens_new[key]:
-                        hit_rate = format((hit_tokens_new[key] - hit_tokens[key]) / (query_tokens_new[key] - query_tokens[key]), '.2%')
-                    else:
-                        hit_rate = 0
-                    logging.info(f"[prefix cache metrics: engine {key}] prefix cache命中率（命中token/查询token）：{hit_rate}")
-                    # DRAM 命中率
-                    logging.info(f"[prefix cache metrics: engine {key}] external查询的token数：{query_tokens_external_new[key] - query_tokens_external[key]}")
-                    logging.info(f"[prefix cache metrics: engine {key}] external命中的token数：{hit_tokens_external_new[key] - hit_tokens_external[key]}")
-                    if query_tokens_external[key] != query_tokens_external_new[key]:
-                        hit_rate_external = format((hit_tokens_external_new[key] - hit_tokens_external[key]) / (query_tokens_external_new[key] - query_tokens_external[key]), '.2%')
-                    else:
-                        hit_rate_external = 0
-                    logging.info(f"[prefix cache metrics: engine {key}] external命中率（命中token/查询token）：{hit_rate_external}")
+            query_tokens_new, query_tokens_external_new, hit_tokens_new, hit_tokens_external_new = get_pod_metrics_info(pod_info)
+            cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tokens_external,query_tokens_new,
+                                query_tokens_external_new, hit_tokens_new, hit_tokens_external_new)
             
             # 保存前缀测试结果
             save_result(request_rate, npu_num)
             logging.info(f"[开始] 全量数据集测试")
             # 命中率计算
-            query_tokens,query_tokens_external = get_prefix_queries_total(HOST_IP,HOST_PORT)
-            hit_tokens,hit_tokens_external = get_prefix_hits_total(HOST_IP,HOST_PORT)
+            query_tokens, query_tokens_external, hit_tokens, hit_tokens_external = get_pod_metrics_info(pod_info)
             
             modify_aisbench_api(concurrency,str(output_len))
             dst_file = generate_test_dataset(src_file_data, dst_dir)
             # 执行测试命令
             os. system(ais_bench_cmd)
-            logging.info(f"[完成] 全量数据集测试完成")
+            logging.info(f"[完成] 全量数据集测试完成，结果保存在aisbench_result.csv")
             
-            query_tokens_new,query_tokens_external_new = get_prefix_queries_total(HOST_IP,HOST_PORT)
-            hit_tokens_new,hit_tokens_external_new = get_prefix_hits_total(HOST_IP,HOST_PORT)
-            if query_tokens_new and hit_tokens_new:
-                # print("---------------prefix metrics---------------")
-                for key in query_tokens_new:
-                    logging.info(f"----------------------prefix cache metrics: engine {key}----------------------")
-                    # HBM 命中率
-                    logging.info(f"[prefix cache metrics: engine {key}] prefix cache查询的token数：{query_tokens_new[key] - query_tokens[key]}")
-                    logging.info(f"[prefix cache metrics: engine {key}] prefix cache命中的token数：{hit_tokens_new[key] - hit_tokens[key]}")
-                    if query_tokens[key] != query_tokens_new[key]:
-                        hit_rate = format((hit_tokens_new[key] - hit_tokens[key]) / (query_tokens_new[key] - query_tokens[key]), '.2%')
-                    else:
-                        hit_rate = 0
-                    logging.info(f"[prefix cache metrics: engine {key}] prefix cache命中率（命中token/查询token）：{hit_rate}")
-                    # DRAM 命中率
-                    logging.info(f"[prefix cache metrics: engine {key}] external查询的token数：{query_tokens_external_new[key] - query_tokens_external[key]}")
-                    logging.info(f"[prefix cache metrics: engine {key}] external命中的token数：{hit_tokens_external_new[key] - hit_tokens_external[key]}")
-                    if query_tokens_external[key] != query_tokens_external_new[key]:
-                        hit_rate_external = format((hit_tokens_external_new[key] - hit_tokens_external[key]) / (query_tokens_external_new[key] - query_tokens_external[key]), '.2%')
-                    else:
-                        hit_rate_external = 0
-                    logging.info(f"[prefix cache metrics: engine {key}] external命中率（命中token/查询token）：{hit_rate_external}")
+            query_tokens_new, query_tokens_external_new, hit_tokens_new, hit_tokens_external_new = get_pod_metrics_info(pod_info)
+            cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tokens_external, query_tokens_new,
+                                query_tokens_external_new, hit_tokens_new, hit_tokens_external_new)
             
         else:
             logging.info(f"[开始] 全量数据集测试")
@@ -288,7 +328,7 @@ if __name__ == '__main__':
                 os.system(ais_bench_cmd)
         else:
             os.system(ais_bench_cmd)
-        logging.info(f"[完成] 全量数据集测试完成")
+        logging.info(f"[完成] 全量数据集测试完成，结果保存在aisbench_result.csv")
 
     
     # 保存结果
