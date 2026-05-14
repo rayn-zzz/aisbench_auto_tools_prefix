@@ -11,7 +11,7 @@ def get_prefix_queries_total(ip_address, port):
     try:
         # 构建并执行命令
         url = f"http://{ip_address}:{port}/metrics"
-        command = f"unset http_proxy && unset https_proxy && sleep 3s && curl -s {url} | grep 'prefix_cache_queries_total' | grep 'model_name'"
+        command = f"sleep 3s && curl -s {url} | grep 'prefix_cache_queries_total' | grep 'model_name'"
         # os.system(command)
         result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
         
@@ -45,9 +45,9 @@ def get_prefix_queries_total(ip_address, port):
             
             # 根据指标名称分类
             if 'external_prefix_cache_queries_total' in line:
-                external_stats[engine] = value
+                external_stats[int(engine)] = value
             elif 'vllm:prefix_cache_queries_total' in line:
-                normal_stats[engine] = value
+                normal_stats[int(engine)] = value
         print(normal_stats, external_stats)
         return normal_stats, external_stats
         
@@ -62,7 +62,7 @@ def get_prefix_hits_total(ip_address, port):
     try:
         # 构建并执行命令
         url = f"http://{ip_address}:{port}/metrics"
-        command = f"unset http_proxy && unset https_proxy && sleep 3s && curl -s {url} | grep 'prefix_cache_hits_total' | grep 'model_name'"
+        command = f"sleep 3s && curl -s {url} | grep 'prefix_cache_hits_total' | grep 'model_name'"
         # os.system(command)
         
         result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
@@ -96,9 +96,9 @@ def get_prefix_hits_total(ip_address, port):
             
             # 根据指标名称分类
             if 'external_prefix_cache_hits_total' in line:
-                external_stats[engine] = value
+                external_stats[int(engine)] = value
             elif 'vllm:prefix_cache_hits_total' in line:
-                normal_stats[engine] = value
+                normal_stats[int(engine)] = value
         print(normal_stats, external_stats)
         return normal_stats, external_stats
         
