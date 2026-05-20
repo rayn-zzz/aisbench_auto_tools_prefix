@@ -205,3 +205,30 @@ do
         python3 aisbench_test.py --input_len 8192 --output_len 1 --data_num $(($i * 4)) --concurrency $i --request_rate 0 --dataset_type prefix_cache --repeat_rate 0.5  --seed $i --prefix_num 1 --prefix_test
 done
 ```
+
+## 5、打屏不显示prefix cache命中率信息
+
+只有开启--prefix_test才会打印命中率信息，其余情况可参考【2）b.发送curl命令】在测试前后分别发送curl命令获取metrics信息，自行计算命中率，计算公式如下：
+
+hit rate = (第二次查询prefix_cache_hits - 第一次查询prefix_cache_hits) / (第二次查询prefix_cache_queries - 第一次查询prefix_cache_queries)
+
+------------解决方案分界线------------
+
+1）检查config.py里的POD_INFO是否配置正确。
+
+PD混部：配置主节点的IP和PORT。
+
+PD分离：单开prefix cache时，配置P节点的IP和对应DP域的PORT；开启池化时，配置每个节点的IP和对应DP域的PORT
+
+2）按照以下步骤手动验证是否能正确获取vllm metrics信息
+
+a. 关闭proxy代理
+```
+unset http_proxy
+unset https_proxy
+```
+b. 发送curl命令
+```
+curl -s http://{ip_address}:{port}/metrics | grep prefix
+```
+正常情况返回vllm:prefix_cache_queries和vllm:prefix_cache_hits信息
