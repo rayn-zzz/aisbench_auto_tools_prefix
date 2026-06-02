@@ -138,45 +138,45 @@ ${prefix_data2}%^&${suffix_data2}
 
 1、测试2k/2k不带前缀的gsm8k数据集性能
 
-```
+`
 python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10
-```
+`
 
 2、测试2k/2k不带前缀的gsm8k数据集性能，开启**思考模式**
 
-```
+`
 python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10 --enable_think
-```
+`
 
 3、测试2k/2k带前缀的gsm8k数据集性能，前缀个数1，数据集前缀重复率50%，dp 2，**先预热前缀**
 
-```
+`
 python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10 --dataset_type prefix_cache --repeat_rate 0.5 --prefix_test --dp 2
-```
+`
 
 4、测试2k/2k带前缀的gsm8k数据集性能，前缀个数3，数据集前缀重复率73%，不预热前缀直接跑完整数据集
 
-```
+`
 python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --request_rate 10 --dataset_type prefix_cache --repeat_rate 73% --seed 200 --prefix_num 3
-```
+`
 
 5、测试8k~128k**不定长**，平均32k，带前缀的gsm8k数据集性能，数据集前缀重复率90%，dp 2，**先预热前缀**
 
-```
+`
 python3 aisbench_test.py --input_len 32768 --output_len 300 --data_num 32 --concurrency 8 --request_rate 0 --dataset_type prefix_cache --repeat_rate 90% --prefix_test --dp_size 2 --length_mean 32768 --length_std 49152 --length_min 8192 --length_max 131072
-```
+`
 
 6、测试指定数据集性能（仅限**gsm8k**格式）
 
-```
+`
 python3 aisbench_test.py --dataset "/mnt/path_to_dataset/medium2.jsonl" --output_len 20 --concurrency 1024
-```
+`
 
 7、测试指定数据集精度（仅限**gsm8k**格式）
 
-```
+`
 python3 aisbench_test.py --dataset "/mnt/path_to_dataset/precision_dataset.jsonl" --output_len 1024 --concurrency 64 --request_rate 4 --test_accuracy
-```
+`
 
 ## 四、结果获取
 
