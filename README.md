@@ -192,7 +192,7 @@ python3 aisbench_test.py --dataset "/mnt/path_to_dataset/precision_dataset.jsonl
 
 ## 3、ais_bench: error: unrecognized arguments: --num-warmups
 
-解决方案：修改aisbench_test.py第76行，删除 `--num-warmups 0`
+解决方案：修改aisbench_test.py，搜索并删除 `--num-warmups 0`
 
 ※ `--num-warmups`参数为aisbench最新版本功能，使用时需配置为0，详情参考[aisbench github](https://github.com/AISBench/benchmark)官网，文档路径：docs/source_zh_cn/base_tutorials/all_params/cli_args.md
 
