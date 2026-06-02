@@ -28,6 +28,10 @@ def parse_arguments():
     parser.add_argument("--prefix_test", action='store_true', default=False, help="test prefix dataset firstly")
     parser.add_argument("--seed", type=int, default=1, help="dataset random seed")
     parser.add_argument("--dp", type=int, default=1, help="dp size")
+    parser.add_argument("--length_mean", type=int, default=None, help="gaussian mean for variable length")
+    parser.add_argument("--length_std", type=float, default=None, help="gaussian std for variable length")
+    parser.add_argument("--length_min", type=int, default=None, help="min length for uniform range or gaussian clip")
+    parser.add_argument("--length_max", type=int, default=None, help="max length for uniform range or gaussian clip")
     return parser.parse_args()
 
 def symlink_force(target, link_name):
@@ -41,19 +45,27 @@ def symlink_force(target, link_name):
         else:
             raise e
 
-def create_gsm8k_dataset(dataset_type, input_len, data_num, model_path, dataset_path, prefix_num, repeat_rate, seed):
+def create_gsm8k_dataset(dataset_type, input_len, data_num, model_path, dataset_path, prefix_num, repeat_rate, seed,
+                         length_mean=None, length_std=None, length_min=None, length_max=None):
     if not os.path.exists(dataset_path):
         logging.error(f"dataset work path {dataset_path} not exist. please create it first.")
         exit(0)
-    
-    base_name = os.path.basename(os.path.normpath(model_path))       
+
+    base_name = os.path.basename(os.path.normpath(model_path))
     if dataset_type == "prefix_cache":
-        prefix_jsonl_path, dataset_jsonl_path = create_multi_prefix_dataset(model_path,input_len,data_num,dataset_path,1,dp,repeat_rate,seed,prefix_num)
+        prefix_jsonl_path, dataset_jsonl_path = create_multi_prefix_dataset(model_path,input_len,data_num,dataset_path,1,dp,repeat_rate,seed,prefix_num,
+                                                                             length_mean, length_std, length_min, length_max)
         logging.info("[完成] 数据集已生成：")
         logging.info(f"  - 公共前缀：{prefix_jsonl_path}  (行数={dp*prefix_num})")
         logging.info(f"  - 数据集：  {dataset_jsonl_path} (行数={data_num})")
         logging.info("[信息] 配置：")
         logging.info(f"  tokens(单条长度)={input_len}, prefix_ratio(前缀重复率)={repeat_rate}")
+        if length_mean is not None and length_std is not None:
+            logging.info(f"  length_dist=gaussian(mean={length_mean}, std={length_std}, min={length_min}, max={length_max})")
+        elif length_min is not None and length_max is not None:
+            logging.info(f"  length_dist=uniform_int([{length_min}, {length_max}])")
+        else:
+            logging.info("  length_dist=fixed")
     else:
         dataset_name = "GSM8K-in" + str(input_len) + "-num" + str(data_num) + "-" + base_name + ".jsonl"
         logging.info(f"dataset_name: {dataset_name}")
@@ -63,7 +75,8 @@ def create_gsm8k_dataset(dataset_type, input_len, data_num, model_path, dataset_
         if not os.path.exists(dataset_jsonl_path):
             logging.warning(f"Dataset {dataset_name} is not exist. Start create dataset")
             # create_data(input_len, data_num, model_path, dataset_path)
-            prefix_jsonl_path, dataset_jsonl_path = create_multi_prefix_dataset(model_path,input_len,data_num,dataset_path,0,dp,0,seed,prefix_num)
+            prefix_jsonl_path, dataset_jsonl_path = create_multi_prefix_dataset(model_path,input_len,data_num,dataset_path,0,dp,0,seed,prefix_num,
+                                                                                 length_mean, length_std, length_min, length_max)
             logging.info(f"Dataset {dataset_name} created.")
         else:
             logging.info(f"Dataset {dataset_name} exist.")
@@ -213,6 +226,24 @@ if __name__ == '__main__':
     dataset_type = args.dataset_type
     seed = args.seed
     dp = args.dp
+    length_mean = args.length_mean
+    length_std = args.length_std
+    length_min = args.length_min
+    length_max = args.length_max
+
+    # 变长参数校验
+    if (length_mean is None) ^ (length_std is None):
+        raise ValueError("length_mean 和 length_std 必须同时提供或同时不提供")
+    if (length_min is None) ^ (length_max is None):
+        raise ValueError("length_min 和 length_max 必须同时提供或同时不提供")
+    if length_mean is not None and length_mean < 1:
+        raise ValueError("length_mean 必须 >= 1")
+    if length_std is not None and length_std < 0:
+        raise ValueError("length_std 必须 >= 0")
+    if length_min is not None and length_min < 1:
+        raise ValueError("length_min 必须 >= 1")
+    if length_max is not None and length_max < 1:
+        raise ValueError("length_max 必须 >= 1")
 
     logging.info(f"input token length: {input_len}")
     logging.info(f"output token length: {output_len}")
@@ -230,6 +261,10 @@ if __name__ == '__main__':
     logging.info(f"dataset type: {dataset_type}")
     logging.info(f"seed: {seed}")
     logging.info(f"dp size: {dp}")
+    logging.info(f"length_mean: {length_mean}")
+    logging.info(f"length_std: {length_std}")
+    logging.info(f"length_min: {length_min}")
+    logging.info(f"length_max: {length_max}")
 
     # 区分流式和非流式
     if test_type == "text":
@@ -243,7 +278,8 @@ if __name__ == '__main__':
         api_test_abbr = "vllm-api-stream-chat"
 
     if dataset_path_input == "none":
-        src_file_prefix,src_file_data = create_gsm8k_dataset(dataset_type, input_len, data_num, MODEL_PATH, DATASET_PATH, prefix_num, repeat_rate, seed)
+        src_file_prefix,src_file_data = create_gsm8k_dataset(dataset_type, input_len, data_num, MODEL_PATH, DATASET_PATH, prefix_num, repeat_rate, seed,
+                                                              length_mean, length_std, length_min, length_max)
     else:
         # 指定数据集路径逻辑
         if not os.path.exists(dataset_path_input):
