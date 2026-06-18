@@ -137,7 +137,16 @@ def modify_aisbench_api(concurrency, output_len):
 def get_pod_metrics_info(pod_info):
     query_tokens, query_tokens_external,hit_tokens,hit_tokens_external = {},{},{},{}
     for pod in pod_info:
-        ip,port = pod.split(":")
+        if pod.startswith('['):
+            # IPv6 格式: [ip]:port
+            ip = pod.split(']:')[0][1:]
+            port = pod.split(']:')[1]
+        elif pod.count(':') > 1:
+            # IPv6 格式无方括号: ip:port 
+            ip, port = pod.rsplit(':', 1)
+        else:
+            # IPv4 格式: ip:port
+            ip, port = pod.split(":")
         query_tokens[pod],query_tokens_external[pod] = get_prefix_queries_total(ip,port)
         hit_tokens[pod], hit_tokens_external[pod] = get_prefix_hits_total(ip,port)
     return query_tokens, query_tokens_external, hit_tokens, hit_tokens_external
