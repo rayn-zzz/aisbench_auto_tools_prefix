@@ -14,8 +14,8 @@ def get_data(aisbench_log, req_rate, npu_num):
             txt = f_streaming.readlines()
             for i in range(len(txt)):
                 if "Current exp folder" in txt[i]:
-                    matches = re.findall(r"[\w']+", txt[i])
-                    log_dir = '/'.join(matches[-3:])
+                    matches = re.search(r"Current exp folder:\s*(.+)$", txt[i])
+                    log_dir = matches.group(1).strip()
                 if "TTFT" in txt[i]:
                     matches = re.findall(r'(\d+\.\d+)', txt[i])
                     slo_p90_first_token_time = list(map(float, matches))[5]
