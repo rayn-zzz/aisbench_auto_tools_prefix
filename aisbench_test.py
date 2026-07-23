@@ -111,6 +111,7 @@ def modify_aisbench_api(concurrency, output_len):
     for ss in file_default.readlines():
         tt = re.sub("model_path_for_replace", MODEL_PATH, ss)
         tt = re.sub("model_name_for_replace", MODEL_NAME, tt)
+        tt = re.sub("api_key_for_replace", API_KEY, tt)
         tt = re.sub("rr_for_replace", request_rate, tt)
         tt = re.sub("test_type_for_replace", api_test_type, tt)
         tt = re.sub("test_abbr_for_replace", api_test_abbr, tt)

@@ -14,6 +14,9 @@ HOST_IP = "141.xx.xx.xx"
 # 请求目的端口
 HOST_PORT = "8004"
 
+## 鉴权信息
+API_KEY = ""
+
 # 如果使用稳态测试请将该字段设置为 "stable_stage"
 DEFAULT_PERFORMANCE_TEST = "default_perf"
 
