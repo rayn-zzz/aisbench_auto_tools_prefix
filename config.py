@@ -1,4 +1,4 @@
-# 数据集文件夹路径，需可访问
+# 数据集文件夹路径，需可访问(请使用绝对路径)
 DATASET_PATH = "/home/dataset"
 
 # aisbench 工作路径, 为 git clone aisbench 后得到的 benchmark 目录的绝对路径
