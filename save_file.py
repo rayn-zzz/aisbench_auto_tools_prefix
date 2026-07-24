@@ -10,9 +10,9 @@ def get_data(aisbench_log, req_rate, npu_num):
     log_dir=""
     DEFAULT_METRICS = {
     "current_time": None,
-    "input_len": 99999,
-    "output_len": 99999,
-    "total_req": 99999,
+    "input_len": 99999, #InputTokens
+    "output_len": 99999, #OutputTokens
+    "total_req": 99999, #Total Requests
     "max_cc": 99999,
     "cc": 99999,
     "rr": 0,
@@ -20,15 +20,15 @@ def get_data(aisbench_log, req_rate, npu_num):
     "TTFT P90": 99999,
     "TPOT avg": 99999,
     "TPOT SLO_P90": 99999,
-    "E2E_time": 99999,
-    "output_throughput": 99999,
+    "E2E_time": 99999, #Benchmark Duration 
+    "output_throughput": 99999, #Output Token Throughput
     "single_output_throughput": 99999,
-    "E2E_throughput": 9999,
+    "E2E_throughput": 9999, #Total Token Throughput
     "single_E2E_throughput": 9999,
     "qps": 9999,
     "qpm": 9999,
-    "input_token_throughput": 9999,
-    "prefill_token_throughput": 9999,
+    "input_token_throughput": 9999, #Input Token Throughput
+    "prefill_token_throughput": 9999, #Prefill Token Throughput
     "E2EL avg":9999,
     "E2EL P90":9999
     }
