@@ -1,24 +1,23 @@
-import subprocess
 import logging
 import re
 from datetime import datetime
-import os
+import requests
+
+def _fetch_metrics(ip_address, port):
+    """获取 /metrics 接口文本"""
+    url = f"http://{ip_address}:{port}/metrics"
+    resp = requests.get(url, proxies={"http": None, "https": None}, timeout=30)
+    resp.raise_for_status()
+    return resp.text
+
 
 def get_prefix_queries_total(ip_address, port):
     """
     获取查询token总数,返回{engine:tokens}
     """
     try:
-        # 构建并执行命令
-        url = f"http://{ip_address}:{port}/metrics"
-        command = f"unset http_proxy && unset https_proxy && sleep 3s && curl -s {url} | grep 'prefix_cache_queries_total' | grep 'model_name'"
-        # os.system(command)
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
-        
-        if result.returncode != 0 or not result.stdout.strip():
-            # print(f"未找到指标数据: {result.stderr}")
-            return {}, {}
-        lines = result.stdout.strip().split('\n')
+        text = _fetch_metrics(ip_address, port)
+        lines = [l for l in text.split('\n') if 'model_name' in l and 'prefix_cache_queries_total' in l]
         normal_stats = {}
         external_stats = {}
         
@@ -50,7 +49,6 @@ def get_prefix_queries_total(ip_address, port):
                 normal_stats[int(engine)] = value
         print(normal_stats, external_stats)
         return normal_stats, external_stats
-        
     except Exception as e:
         print(f"错误: {e}")
         return {}, {}
@@ -60,16 +58,8 @@ def get_prefix_hits_total(ip_address, port):
     获取命中token总数,返回{engine:tokens}
     """
     try:
-        # 构建并执行命令
-        url = f"http://{ip_address}:{port}/metrics"
-        command = f"unset http_proxy && unset https_proxy && sleep 3s && curl -s {url} | grep 'prefix_cache_hits_total' | grep 'model_name'"
-        # os.system(command)
-        
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
-        
-        if result.returncode != 0 or not result.stdout.strip():
-            return {}, {}
-        lines = result.stdout.strip().split('\n')
+        text = _fetch_metrics(ip_address, port)
+        lines = [l for l in text.split('\n') if 'model_name' in l and 'prefix_cache_hits_total' in l]
         normal_stats = {}
         external_stats = {}
         
