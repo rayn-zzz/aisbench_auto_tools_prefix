@@ -2,6 +2,7 @@ import os, errno
 import argparse
 import re
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import *
 from generate_dataset import *
 from save_file import get_data, save_csv, save_log
@@ -135,21 +136,31 @@ def modify_aisbench_api(concurrency, output_len):
         os.path.join(WORK_PATH, "ais_bench/benchmark/configs/models/vllm_api/vllm_api_chat_temp.py")
     )
 
+def _fetch_pod_metrics(pod):
+    if pod.startswith('['):
+        # IPv6 格式: [ip]:port
+        ip = pod.split(']:')[0][1:]
+        port = pod.split(']:')[1]
+    elif pod.count(':') > 1:
+        # IPv6 格式无方括号: ip:port
+        ip, port = pod.rsplit(':', 1)
+    else:
+        # IPv4 格式: ip:port
+        ip, port = pod.split(":")
+    query_token, query_external = get_prefix_queries_total(ip, port)
+    hit_token, hit_external = get_prefix_hits_total(ip, port)
+    return pod, query_token, query_external, hit_token, hit_external
+
 def get_pod_metrics_info(pod_info):
-    query_tokens, query_tokens_external,hit_tokens,hit_tokens_external = {},{},{},{}
-    for pod in pod_info:
-        if pod.startswith('['):
-            # IPv6 格式: [ip]:port
-            ip = pod.split(']:')[0][1:]
-            port = pod.split(']:')[1]
-        elif pod.count(':') > 1:
-            # IPv6 格式无方括号: ip:port 
-            ip, port = pod.rsplit(':', 1)
-        else:
-            # IPv4 格式: ip:port
-            ip, port = pod.split(":")
-        query_tokens[pod],query_tokens_external[pod] = get_prefix_queries_total(ip,port)
-        hit_tokens[pod], hit_tokens_external[pod] = get_prefix_hits_total(ip,port)
+    query_tokens, query_tokens_external, hit_tokens, hit_tokens_external = {}, {}, {}, {}
+    with ThreadPoolExecutor(max_workers=len(pod_info)) as executor:
+        futures = [executor.submit(_fetch_pod_metrics, pod) for pod in pod_info]
+        for future in as_completed(futures):
+            pod, q_n, q_e, h_n, h_e = future.result()
+            query_tokens[pod] = q_n
+            query_tokens_external[pod] = q_e
+            hit_tokens[pod] = h_n
+            hit_tokens_external[pod] = h_e
     return query_tokens, query_tokens_external, hit_tokens, hit_tokens_external
 
 def cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tokens_external, query_tokens_new,
