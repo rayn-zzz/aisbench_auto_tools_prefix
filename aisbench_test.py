@@ -1,7 +1,10 @@
 import os, errno
+import sys
 import argparse
 import re
 import logging
+import subprocess
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import *
 from generate_dataset import *
@@ -49,8 +52,9 @@ def symlink_force(target, link_name):
 def create_gsm8k_dataset(dataset_type, input_len, data_num, model_path, dataset_path, prefix_num, repeat_rate, seed,
                          length_mean=None, length_std=None, length_min=None, length_max=None):
     if not os.path.exists(dataset_path):
-        logging.error(f"dataset work path {dataset_path} not exist. please create it first.")
-        exit(0)
+        logging.warning(f"dataset work path {dataset_path} not exist. creating it automatically.")
+        os.makedirs(dataset_path, exist_ok=True)
+        logging.info(f"dataset work path {dataset_path} created.")
 
     base_name = os.path.basename(os.path.normpath(model_path))
     if dataset_type == "prefix_cache":
@@ -87,7 +91,7 @@ def generate_aisbench_command(DEFAULT_PERFORMANCE_TEST):
     if test_accuracy:
         ais_bench_cmd = f"ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --work-dir {OUTPUT_DIR} --dump-eval-details"
     else:
-        ais_bench_cmd = f"ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --mode perf --summarizer {DEFAULT_PERFORMANCE_TEST} --work-dir {OUTPUT_DIR} --debug --num-warmups 0 2>&1 | tee aisbench.log"
+        ais_bench_cmd = f"set -o pipefail; ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --mode perf --summarizer {DEFAULT_PERFORMANCE_TEST} --work-dir {OUTPUT_DIR} --debug --num-warmups 0 2>&1 | tee -a aisbench.log | tee -a aisbench_all.log"
     return ais_bench_cmd
 
 def generate_test_dataset(src_file, dst_dir):
@@ -170,8 +174,8 @@ def cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tok
         return
 
     # 输出格式
-    line_width = 108
-    scope_width, hbm_rate_width, hbm_detail_width, external_rate_width = 25, 19, 21, 21
+    line_width = 118
+    scope_width, hbm_rate_width, hbm_detail_width, external_rate_width = 35, 19, 21, 21
     headers = ["scope", "hbm_hit_rate", "hbm(hit/query)", "external_hit_rate", "external(hit/query)"]
     header = (f"{headers[0]:<{scope_width}}{headers[1]:<{hbm_rate_width}}"
               f"{headers[2]:<{hbm_detail_width}}{headers[3]:<{external_rate_width}}{headers[4]}")
@@ -186,11 +190,11 @@ def cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tok
                 f"{external_hits}/{external_queries}")
 
     total_hbm_queries = total_hbm_hits = total_external_queries = total_external_hits = 0
-    pod_rows, skipped_pods = [], []
+    pod_sections, skipped_pods = [], []
 
     for pod, engines in sorted(query_tokens.items()):
         # 八类指标必须全部存在，且 engine_id 完全一致；
-        # 否则无法可靠计算“测试后累计值 - 测试前累计值”，跳过该 POD
+        # 否则无法可靠计算"测试后累计值 - 测试前累计值"，跳过该 POD
         metrics = [query_tokens.get(pod), query_tokens_external.get(pod), hit_tokens.get(pod),
                    hit_tokens_external.get(pod), query_tokens_new.get(pod), query_tokens_external_new.get(pod),
                    hit_tokens_new.get(pod), hit_tokens_external_new.get(pod)]
@@ -204,7 +208,20 @@ def cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tok
             skipped_pods.append(pod)
             continue
 
-        # 合并当前 POD 下所有 engine_id 的指标增量
+        # 按 engine_id 升序遍历，为每个 engine 单独生成一行
+        engine_rows = []
+        for engine_id in sorted(engine_ids):
+            engine_scope = f"{pod}/engine{engine_id}"
+            engine_hbm_queries = query_tokens_new[pod][engine_id] - query_tokens[pod][engine_id]
+            engine_hbm_hits = hit_tokens_new[pod][engine_id] - hit_tokens[pod][engine_id]
+            engine_external_queries = query_tokens_external_new[pod][engine_id] \
+                - query_tokens_external[pod][engine_id]
+            engine_external_hits = hit_tokens_external_new[pod][engine_id] \
+                - hit_tokens_external[pod][engine_id]
+            engine_rows.append(build_row(engine_scope, engine_hbm_hits, engine_hbm_queries,
+                                         engine_external_hits, engine_external_queries))
+
+        # 合并当前 POD 下所有 engine_id 的指标增量，用于 ALL_PODS 汇总
         pod_hbm_queries = sum(query_tokens_new[pod][engine_id] - query_tokens[pod][engine_id]
                               for engine_id in engine_ids)
         pod_hbm_hits = sum(hit_tokens_new[pod][engine_id] - hit_tokens[pod][engine_id]
@@ -214,14 +231,14 @@ def cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tok
         pod_external_hits = sum(hit_tokens_external_new[pod][engine_id]
                                 - hit_tokens_external[pod][engine_id] for engine_id in engine_ids)
 
-        pod_rows.append(build_row(pod, pod_hbm_hits, pod_hbm_queries,
-                                  pod_external_hits, pod_external_queries))
+        # 每个 POD 按 engine 升序输出，POD 之间用分隔线隔开
+        pod_sections.append(engine_rows)
         total_hbm_queries += pod_hbm_queries
         total_hbm_hits += pod_hbm_hits
         total_external_queries += pod_external_queries
         total_external_hits += pod_external_hits
 
-    if not pod_rows:
+    if not pod_sections:
         logging.warning(f"No valid prefix cache metrics found. Skipped PODs: {', '.join(skipped_pods)}")
         return
 
@@ -233,9 +250,14 @@ def cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tok
     console_lines = ["=" * line_width, "Prefix cache hit summary", "=" * line_width, header,
                      "-" * line_width, all_pods_row, "=" * line_width]
 
-    # 日志输出每个有效 POD 和最终汇总
+    # 日志输出每个 POD 下所有 engine 的详细信息，POD 之间用分隔线隔开
     log_lines = ["=" * line_width, "Prefix cache hit detail", "=" * line_width, header,
-                 "-" * line_width, *pod_rows, "-" * line_width, all_pods_row, "=" * line_width]
+                 "-" * line_width]
+    for idx, section in enumerate(pod_sections):
+        if idx > 0:
+            log_lines.append("-" * line_width)
+        log_lines.extend(section)
+    log_lines.extend(["-" * line_width, all_pods_row, "=" * line_width])
 
     if skipped_pods_line:
         console_lines.append(skipped_pods_line)
@@ -246,8 +268,35 @@ def cal_prefix_hit_info(query_tokens, query_tokens_external, hit_tokens, hit_tok
     try:
         with open("aisbench.log", "a", encoding="utf-8") as log_file:
             log_file.write("\n" + "\n".join(log_lines) + "\n")
+        with open("aisbench_all.log", "a", encoding="utf-8") as all_log_file:
+            all_log_file.write("\n" + "\n".join(log_lines) + "\n")
     except OSError as error:
-        logging.error(f"Failed to write prefix cache information to aisbench.log: {error}")
+        logging.error(f"Failed to write prefix cache information to log files: {error}")
+
+def setup_logging():
+    """配置 Python logging：同时输出到控制台、aisbench.log 和 aisbench_all.log"""
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    # 清除已有 handlers（避免重复），但保留会输出到控制台的 StreamHandler
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+    # 控制台输出
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # 写入 aisbench.log（本次运行日志）
+    file_handler = logging.FileHandler("aisbench.log", mode="a", encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    # 写入 aisbench_all.log（所有运行累积日志）
+    all_file_handler = logging.FileHandler("aisbench_all.log", mode="a", encoding="utf-8")
+    all_file_handler.setFormatter(formatter)
+    logger.addHandler(all_file_handler)
 
 if __name__ == '__main__':
     args = parse_arguments()
@@ -272,6 +321,19 @@ if __name__ == '__main__':
     length_std = args.length_std
     length_min = args.length_min
     length_max = args.length_max
+
+    # 初始化日志文件：清空 aisbench.log（新运行覆盖），aisbench_all.log 添加分隔符（续写）
+    with open("aisbench.log", "w", encoding="utf-8") as f:
+        f.write("")
+    with open("aisbench_all.log", "a", encoding="utf-8") as f:
+        f.write(f"\n\n{'='*50}\n")
+        f.write(f"New run started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"{'='*50}\n\n")
+
+    # 配置日志输出到控制台 + aisbench.log + aisbench_all.log
+    setup_logging()
+    logging.info("aisbench.log has been cleared for this run.")
+    logging.info("aisbench_all.log separator added for this run.")
 
     # 变长参数校验
     if (length_mean is None) ^ (length_std is None):
@@ -326,7 +388,7 @@ if __name__ == '__main__':
         # 指定数据集路径逻辑
         if not os.path.exists(dataset_path_input):
             logging.error(f"Dataset {dataset_path_input} is not exist.")
-            exit(0)
+            sys.exit(1)
         src_file_data = dataset_path_input
         src_file_prefix = ""
 
@@ -366,7 +428,7 @@ if __name__ == '__main__':
             # 命中率计算
             query_tokens, query_tokens_external, hit_tokens, hit_tokens_external = get_pod_metrics_info(pod_info)
 
-            os. system(ais_bench_cmd)
+            subprocess.run(ais_bench_cmd, shell=True, check=True)
             logging.info(f"[完成] 前缀数据集测试完成，结果保存在aisbench_result.csv")
 
             query_tokens_new, query_tokens_external_new, hit_tokens_new, hit_tokens_external_new = get_pod_metrics_info(pod_info)
@@ -382,7 +444,7 @@ if __name__ == '__main__':
             modify_aisbench_api(concurrency,str(output_len))
             dst_file = generate_test_dataset(src_file_data, dst_dir)
             # 执行测试命令
-            os. system(ais_bench_cmd)
+            subprocess.run(ais_bench_cmd, shell=True, check=True)
             logging.info(f"[完成] 全量数据集测试完成，结果保存在aisbench_result.csv")
             
             query_tokens_new, query_tokens_external_new, hit_tokens_new, hit_tokens_external_new = get_pod_metrics_info(pod_info)
@@ -393,8 +455,10 @@ if __name__ == '__main__':
             logging.info(f"[开始] 全量数据集测试")
             modify_aisbench_api(concurrency,str(output_len))
             dst_file = generate_test_dataset(src_file_data, dst_dir)
-            os. system(ais_bench_cmd)
-            logging.info(f"[完成] 全量数据集测试完成")
+            subprocess.run(ais_bench_cmd, shell=True, check=True)
+            logging.info(f"[完成] 全量数据集测试完成，结果保存在aisbench_result.csv")
+            # 保存结果
+            save_result(request_rate, npu_num)
 
     else:
         logging.info(f"[开始] 全量数据集测试")
@@ -403,9 +467,9 @@ if __name__ == '__main__':
         if test_times > 1:
             for test_time in range(test_times):
                 logging.info(f"Execution rounds: {test_time + 1}")
-                os.system(ais_bench_cmd)
+                subprocess.run(ais_bench_cmd, shell=True, check=True)
         else:
-            os.system(ais_bench_cmd)
+            subprocess.run(ais_bench_cmd, shell=True, check=True)
         logging.info(f"[完成] 全量数据集测试完成，结果保存在aisbench_result.csv")
 
     
