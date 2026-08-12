@@ -439,7 +439,7 @@ if __name__ == '__main__':
                                 query_tokens_external_new, hit_tokens_new, hit_tokens_external_new)
             
             # 保存前缀测试结果
-            save_result(request_rate, npu_num)
+            save_result(0, npu_num)
             logging.info(f"[开始] 全量数据集测试")
             # 命中率计算
             query_tokens, query_tokens_external, hit_tokens, hit_tokens_external = get_pod_metrics_info(pod_info)
