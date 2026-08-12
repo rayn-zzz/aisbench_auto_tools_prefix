@@ -109,7 +109,9 @@ def save_result(request_rate, npu_num):
     save_log(aisbench_log_dir, log_dir)
     save_csv(ans, filename)
 
-def modify_aisbench_api(concurrency, output_len):
+def modify_aisbench_api(concurrency, output_len, request_rate_param=None):
+    if request_rate_param is None:
+        request_rate_param = request_rate
     file_default = open("default_api.py", 'r+')
     file_temp = open("temp_api.py", 'w+')
     logging.info("Api config file:")
@@ -117,7 +119,7 @@ def modify_aisbench_api(concurrency, output_len):
         tt = re.sub("model_path_for_replace", MODEL_PATH, ss)
         tt = re.sub("model_name_for_replace", MODEL_NAME, tt)
         tt = re.sub("api_key_for_replace", API_KEY, tt)
-        tt = re.sub("rr_for_replace", request_rate, tt)
+        tt = re.sub("rr_for_replace", request_rate_param, tt)
         tt = re.sub("test_type_for_replace", api_test_type, tt)
         tt = re.sub("test_abbr_for_replace", api_test_abbr, tt)
         tt = re.sub("ip_for_replace", HOST_IP, tt)
@@ -422,7 +424,8 @@ if __name__ == '__main__':
             logging.info(f"pod_info: {pod_info}")
             
             logging.info(f"[开始] 前缀数据集测试")
-            modify_aisbench_api(str(dp),"1")
+            # 前缀测试: request rate 固定为 0
+            modify_aisbench_api(str(dp), "1", request_rate_param="0")
             dst_file = generate_test_dataset(src_file_prefix, dst_dir)
 
             # 命中率计算
