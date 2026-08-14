@@ -460,8 +460,6 @@ if __name__ == '__main__':
             dst_file = generate_test_dataset(src_file_data, dst_dir)
             subprocess.run(ais_bench_cmd, shell=True, check=True)
             logging.info(f"[完成] 全量数据集测试完成，结果保存在aisbench_result.csv")
-            # 保存结果
-            save_result(request_rate, npu_num)
 
     else:
         logging.info(f"[开始] 全量数据集测试")
