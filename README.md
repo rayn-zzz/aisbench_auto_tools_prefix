@@ -67,7 +67,7 @@ POD_INFO = []
 | --output_len | int|输出长度 |
 | --data_num | int | 数据集条数 |
 | --concurrency | int |系统最大并发数 |
-| --request_rate | int |请求频率，默认0  |
+| --request_rate | float |请求频率，默认0  |
 | --test_type | str |text or stream，测试流式or非流式，默认流式即stream |
 | --dataset | str | 数据集路径，可指定测试数据集，仅限gsm8k格式 |
 | --repeat | int | 单条命令的测试次数，默认值1，注：数据采集功能只能采集最后一次测试数据 |
