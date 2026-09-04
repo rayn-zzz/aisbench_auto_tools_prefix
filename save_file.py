@@ -5,6 +5,7 @@ import shutil
 import traceback
 import pandas as pd
 from datetime import datetime
+from config import MODEL_PATH
 logging.getLogger().setLevel(logging.INFO)
 
 DEFAULT_METRICS = {
@@ -139,6 +140,9 @@ def save_log(aisbench_log, log_dir):
 
 def save_csv(ans, filename):
     file_exists = os.path.exists(filename)
+    # 从 config.py 的 MODEL_PATH 中取最后一段路径作为 model_name，作为 CSV 第一列
+    model_name = MODEL_PATH.split("/")[-1]
+    ans = {"model_name": model_name, **ans}
     df_new = pd.DataFrame([ans])
     try:
         if file_exists:
@@ -146,6 +150,9 @@ def save_csv(ans, filename):
             logging.info("文件已存在，读取现有数据")
             df_updated = pd.concat([df_existing, df_new], ignore_index=True)
             df_updated = df_updated.reindex(columns=df_existing.columns.union(df_new.columns, sort=False))
+            # 确保 model_name 始终是第一列
+            df_updated = df_updated.reindex(
+                columns=["model_name"] + [c for c in df_updated.columns if c != "model_name"])
             df_updated.to_csv(filename, index=False)
             logging.info("成功追加新行")
         else:
