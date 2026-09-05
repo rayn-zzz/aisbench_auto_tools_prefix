@@ -16,6 +16,7 @@ DEFAULT_METRICS = {
     "max_cc": 99999,
     "cc": 99999,
     "rr": 0,
+    "repeat_rate": 0,
     "TTFT avg": 99999,
     "TTFT P90": 99999,
     "TPOT avg": 99999,
@@ -83,7 +84,7 @@ def _get_field_name(keyword):
     return name_map.get(keyword, [])
 
 
-def get_data(aisbench_log, req_rate, npu_num):
+def get_data(aisbench_log, req_rate, npu_num, repeat_rate):
     log_dir = ""
     metrics = dict(DEFAULT_METRICS)
     try:
@@ -121,6 +122,7 @@ def get_data(aisbench_log, req_rate, npu_num):
                         break
         metrics["current_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         metrics["rr"] = req_rate
+        metrics["repeat_rate"] = repeat_rate
     except Exception as e:
         logging.warning(traceback.format_exc())
     logging.info(metrics)
