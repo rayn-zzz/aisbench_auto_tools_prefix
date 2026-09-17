@@ -12,6 +12,7 @@ models = [
         retry=2,
         host_ip="ip_for_replace",
         host_port=port_for_replace,
+        url="url_for_replace",
         max_out_len=outputlen_for_replace,
         batch_size=concurrency_for_replace,
         generation_kwargs=dict(

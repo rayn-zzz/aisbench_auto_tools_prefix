@@ -124,6 +124,7 @@ def modify_aisbench_api(concurrency, output_len, request_rate_param=None):
         tt = re.sub("test_abbr_for_replace", api_test_abbr, tt)
         tt = re.sub("ip_for_replace", HOST_IP, tt)
         tt = re.sub("port_for_replace", HOST_PORT, tt)
+        tt = re.sub("url_for_replace", URL, tt)
         tt = re.sub("outputlen_for_replace", output_len, tt)
         tt = re.sub("concurrency_for_replace", concurrency, tt)
         if test_accuracy:

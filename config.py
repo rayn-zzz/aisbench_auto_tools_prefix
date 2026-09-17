@@ -14,6 +14,9 @@ HOST_IP = "141.xx.xx.xx"
 # 请求目的端口
 HOST_PORT = "8004"
 
+# 模型baseUrl, 配置后会忽略HOST_IP、HOST_PORT配置
+URL=""
+
 ## 鉴权信息
 API_KEY = ""
 
