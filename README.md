@@ -1,7 +1,5 @@
 # aisbench_auto_tools_prefix
 
-pr合入联系张睿滢
-
 # 最新更新（2026/8/14）
 1、并发获取vllm metrics信息
 2、优化prefix cache命中率计算和日志存储
