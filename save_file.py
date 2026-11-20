@@ -53,6 +53,17 @@ _METRIC_RULES = [
     ("Prefill Token Throughput",  r'(\d+\.\d+)', 0, 1.0,    None),
 ]
 
+_ANSI_ESCAPE = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+_METRIC_ROW = re.compile(r'^\s*[|\u2502]\s*([^|\u2502]+?)\s*[|\u2502](.*)')
+
+
+def _get_metric_row(line):
+    """Read the first table cell, ignoring log messages and metric dictionaries."""
+    match = _METRIC_ROW.match(_ANSI_ESCAPE.sub('', line))
+    if match is None:
+        return None, None
+    return match.group(1).strip(), match.group(2)
+
 
 def _extract_value(line, pattern, index, scale):
     matches = re.findall(pattern, line)
@@ -95,14 +106,15 @@ def get_data(aisbench_log, req_rate, npu_num, repeat_rate):
                     matches = re.search(r"Current exp folder:\s*(.+)$", line)
                     if matches:
                         log_dir = matches.group(1).strip()
-                if "Max Concurrency" in line:
-                    matches = re.findall(r"[\w']+", line)
+                row_name, row_values = _get_metric_row(line)
+                if row_name == "Max Concurrency":
+                    matches = re.findall(r"[\w']+", row_values)
                     if matches:
                         metrics["max_cc"] = matches[-1]
                     continue
                 for keyword, pattern, index, scale, extra_fn in _METRIC_RULES:
-                    if keyword in line:
-                        raw_value = _extract_value(line, pattern, index, scale)
+                    if keyword == row_name:
+                        raw_value = _extract_value(row_values, pattern, index, scale)
                         if raw_value is not None:
                             if extra_fn:
                                 metrics.update(extra_fn(raw_value, npu_num))
@@ -112,7 +124,7 @@ def get_data(aisbench_log, req_rate, npu_num, repeat_rate):
                                     avg_key = f"{keyword} avg"
                                     if index == 5:
                                         metrics[p90_key] = raw_value
-                                    avg_value = _extract_value(line, pattern, 0, scale)
+                                    avg_value = _extract_value(row_values, pattern, 0, scale)
                                     if avg_value is not None:
                                         metrics[avg_key] = avg_value
                                 else:
