@@ -12,6 +12,15 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+
+def _abort_dataset_failed():
+    """语料池耗尽时只打一条错误并退出，不再用 exit(0) 把失败伪装成成功"""
+    logging.error("请执行命令python3 aisbench_test.py --reset_corpus以进行清理，例如："
+                  "python3 aisbench_test.py --reset_corpus --dataset_type prefix_cache "
+                  "--prefix_num 3 --repeat_rate 0.5")
+    raise SystemExit(1)
+
+
 def create_dataset(tokenizer_path: str, input_len: int, number: int, prefix_flag):
 
     logging.info(f"加载tokenizer: {tokenizer_path}")
@@ -225,8 +234,7 @@ def create_multi_prefix_dataset(tokenizer_path: str, input_len: int, number: int
             # 先生成统一最大长度的文本池，再逐条截断
             long_texts = create_dataset(tokenizer_path, max_len, number, 0)
             if long_texts is None:
-                logging.error("生成数据集失败，请清空picked ids")
-                exit(0)
+                _abort_dataset_failed()
             tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
             dataset = []
             pbar = tqdm(total=number, desc="Truncating to variable lengths", unit="row") if tqdm else None
@@ -243,6 +251,8 @@ def create_multi_prefix_dataset(tokenizer_path: str, input_len: int, number: int
             return "", dataset_path
         else:
             dataset = create_dataset(tokenizer_path, input_len, number, 0)
+            if dataset is None:
+                _abort_dataset_failed()
             dataset_path = os.path.join(save_path, f'GSM8K-in{input_len}-num{number}-{base_name}.jsonl')
             write_data(dataset_path, dataset, number)
             return "", dataset_path
@@ -256,9 +266,8 @@ def create_multi_prefix_dataset(tokenizer_path: str, input_len: int, number: int
     prefix_len = int(input_len * repeat_rate)
     prefix_data = []
     prefix_data = create_dataset(tokenizer_path, prefix_len, prefix_num, 1)
-    if prefix_data == None and repeat_rate > 0:
-        logging.error(f"生成数据集失败，请清空picked ids")
-        exit(0)
+    if prefix_data is None:
+        _abort_dataset_failed()
 
     prefix_dataset = []
     for i in range(prefix_num):
@@ -277,6 +286,8 @@ def create_multi_prefix_dataset(tokenizer_path: str, input_len: int, number: int
     # 后缀数据
     suffix_len = int(input_len - prefix_len - 3)
     suffix_dataset = create_dataset(tokenizer_path, suffix_len, number, 0)
+    if suffix_dataset is None:
+        _abort_dataset_failed()
 
     # 拼接完整数据集
     dataset = []
@@ -312,8 +323,7 @@ def _create_prefix_dataset_variable(tokenizer_path, input_len, number, save_path
     if max_common_len > 0:
         prefix_data = create_dataset(tokenizer_path, max_common_len, prefix_num, 1)
         if prefix_data is None:
-            logging.error("生成数据集失败，请清空picked ids")
-            exit(0)
+            _abort_dataset_failed()
     else:
         prefix_data = [""] * prefix_num
 
@@ -338,8 +348,7 @@ def _create_prefix_dataset_variable(tokenizer_path, input_len, number, save_path
         max_suffix_len = 1
     suffix_pool = create_dataset(tokenizer_path, max_suffix_len, number, 0)
     if suffix_pool is None:
-        logging.error("生成后缀数据集失败，请清空picked ids")
-        exit(0)
+        _abort_dataset_failed()
 
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 

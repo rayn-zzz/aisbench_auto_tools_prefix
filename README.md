@@ -81,10 +81,12 @@ POD_INFO = []
 | --prefix_test| bool | 是否在全量数据集测试前，先测试一遍前缀，默认值false|
 | --seed| int | 随机种子，仅适用生成带前缀数据集，不同seed生成的随机token不重复，默认值1 |
 | --dp| int | dp域数量，默认值1 ，保证模型推理时前缀会预热到每个dp域上|
+| --reverse_dataset | bool | 按 prefix_num 分块生成回文全量数据集，默认 false |
 | --length_mean | int|输入长度均值|
 | --length_std | int|输入长度标准差|
 | --length_min | int|输入长度最小值|
 | --length_max | int|输入长度最大值|
+| --reset_corpus | bool | 压测前清理数据集已使用记录（picked_ids.txt），默认 false |
 
 ### ※ 数据集生成逻辑
 
@@ -133,6 +135,23 @@ ${prefix_data2}%^&${suffix_data2}
 ...
 ```
 
+4、回文数据集
+
+假设前缀为a b c，全量数据集默认顺序是
+
+```
+a1 b1 c1 a2 b2 c2 a3 b3 c3
+```
+相同前缀的请求间有间隔，不利于"预热→命中"。
+
+`--prefix_test` 的预热阶段按**正序** `a → b → c` 把前缀写进缓存，加 `--reverse_dataset` 后会将全量数据集做成回文顺序，再发送请求：
+
+```
+c1 b1 a1 a2 b2 c2 c3 b3 a3
+```
+这能有效避免连续驱逐导致命中率为0的极端情况
+
+
 ## 三、命令示例
 
 **注：测试prefix cache功能需先预热前缀，保证跑完整数据集时存在命中**
@@ -179,6 +198,12 @@ python3 aisbench_test.py --dataset "/mnt/path_to_dataset/medium2.jsonl" --output
 python3 aisbench_test.py --dataset "/mnt/path_to_dataset/precision_dataset.jsonl" --output_len 1024 --concurrency 64 --request_rate 4 --test_accuracy
 `
 
+8、测试2k/2k带前缀的gsm8k数据集性能，前缀个数3，数据集前缀重复率90%，**先预热前缀**（仅限**gsm8k**格式），使用回文顺序的数据集，在压测前清理语料池
+
+`
+python3 aisbench_test.py --input_len 2048 --output_len 2048 --data_num 160 --concurrency 40 --dataset_type prefix_cache --prefix_num 3 --repeat_rate 0.9  --prefix_test --reverse_dataset --reset_corpus
+`
+
 ## 四、结果获取
 
 1、性能结果获取（暂未支持精度结果获取，需在日志中查看）：
@@ -193,11 +218,32 @@ python3 aisbench_test.py --dataset "/mnt/path_to_dataset/precision_dataset.jsonl
 4、命中率获取：
 见打屏日志
 
+## 五、语料池清理
+
+生成数据集时，工具会从 `GSM8K.jsonl` 里逐条取**未使用**的文本作为前缀，已用行号记录在 `picked_ids.txt` 中。这个记录只增不减，而内置语料只有 1319 行，所以：
+
+| prefix_num | 大约能跑多少次 |
+| --- | --- |
+| 1 | 1319 |
+| 3 | 439 |
+| 6 | 219 |
+
+**记录用完时任务会直接失败**，所以请及时清理语料池。
+
+清理方式：在压测命令中加：--reset_corpus 
+
+
 # FAQ（常见问题）
 
-## 1、出现ERROR日志：生成数据集失败，请清空picked ids
+## 1、出现ERROR日志：前缀池生成失败/生成数据集失败（语料已耗尽）
 
-解决方案：删除picked_ids.txt文件
+解决方案：清理语料池使用记录后重试
+
+```
+python3 aisbench_test.py --reset_corpus <其余参数保持不变>
+```
+
+或直接删除 `picked_ids.txt`。
 
 ## 2、加载tokenizer报错
 

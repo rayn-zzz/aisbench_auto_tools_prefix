@@ -36,6 +36,10 @@ def parse_arguments():
     parser.add_argument("--length_std", type=float, default=None, help="gaussian std for variable length")
     parser.add_argument("--length_min", type=int, default=None, help="min length for uniform range or gaussian clip")
     parser.add_argument("--length_max", type=int, default=None, help="max length for uniform range or gaussian clip")
+    parser.add_argument("--reset_corpus", action='store_true', default=False,
+                        help="clear the corpus usage record (picked_ids.txt) before generating")
+    parser.add_argument("--reverse_dataset", action='store_true', default=False,
+                        help="generate a reversed-order dataset copy (block = prefix_num)")
     return parser.parse_args()
 
 def symlink_force(target, link_name):
@@ -94,13 +98,41 @@ def generate_aisbench_command(DEFAULT_PERFORMANCE_TEST):
         ais_bench_cmd = f"ais_bench --models vllm_api_chat_temp --datasets gsm8k_gen_0_shot_cot_str_perf --mode perf --summarizer {DEFAULT_PERFORMANCE_TEST} --work-dir {OUTPUT_DIR} --debug --num-warmups 0 2>&1 | tee -a aisbench.log | tee -a aisbench_all.log"
     return ais_bench_cmd
 
-def generate_test_dataset(src_file, dst_dir):
+def write_reversed_dataset(src_file, block):
+    """按 block 行分块，第 1、3、5… 块整块逆序（首组即逆序），写出副本（只缓冲一块，不整包读入）"""
+    name = os.path.splitext(os.path.basename(src_file))[0] + ".reversed.jsonl"
+    try:
+        out = open(os.path.join(DATASET_PATH, name), "wb")
+    except OSError:
+        # 数据集目录不可写时回退到当前目录；仍不可写则直接抛出，不做顺序降级
+        out = open(os.path.join(os.getcwd(), name), "wb")
+        logging.warning(f"数据集目录 {DATASET_PATH} 不可写，副本改写到当前目录")
+    out_file = out.name
+    buf, block_index, n_rows = [], 0, 0
+    with open(src_file, "rb") as src, out:
+        for raw in src:
+            if not raw.strip():
+                continue
+            buf.append(raw)
+            n_rows += 1
+            if len(buf) == block:
+                out.writelines(buf if block_index % 2 else reversed(buf))
+                buf, block_index = [], block_index + 1
+        if buf:
+            out.writelines(buf if block_index % 2 else reversed(buf))
+    logging.info(f"[逆序数据集] {src_file} -> {out_file} ({n_rows} 行, 块大小={block})")
+    return out_file
+
+
+def generate_test_dataset(src_file, dst_dir, reverse_dataset=False, block_size=1):
     dst_file = os.path.join(dst_dir, "test.jsonl")
     logging.info(f"src_file: {src_file}")
+    if reverse_dataset:
+        src_file = write_reversed_dataset(src_file, block_size)
     logging.info(f"dst_file: {dst_file}")
     # 使用软连接
     symlink_force(src_file, dst_file)
-    return
+    return dst_file
 
 def save_result(request_rate, npu_num, repeat_rate):
     aisbench_log_dir = "aisbench.log"
@@ -324,6 +356,11 @@ if __name__ == '__main__':
     length_std = args.length_std
     length_min = args.length_min
     length_max = args.length_max
+    reset_corpus = args.reset_corpus
+    reverse_dataset = args.reverse_dataset
+    # 逆序分块：正常情况请求集按 prefix_num 循环；repeat_rate=100% 时请求集直接
+    # 循环含 dp 副本的 prefix_dataset，周期变成 dp*prefix_num，块大小必须跟着变
+    reverse_block = dp * prefix_num if repeat_rate >= 1 else prefix_num
 
     # 初始化日志文件：清空 aisbench.log（新运行覆盖），aisbench_all.log 添加分隔符（续写）
     with open("aisbench.log", "w", encoding="utf-8") as f:
@@ -337,6 +374,14 @@ if __name__ == '__main__':
     setup_logging()
     logging.info("aisbench.log has been cleared for this run.")
     logging.info("aisbench_all.log separator added for this run.")
+
+    # 清理语料池使用记录（只删 picked_ids.txt，不动已生成的数据集）
+    if reset_corpus:
+        if os.path.exists("./picked_ids.txt"):
+            os.remove("./picked_ids.txt")
+            logging.info("语料池使用记录已清理: ./picked_ids.txt")
+        else:
+            logging.info("语料池使用记录不存在，无需清理")
 
     # 变长参数校验
     if (length_mean is None) ^ (length_std is None):
@@ -447,7 +492,9 @@ if __name__ == '__main__':
             query_tokens, query_tokens_external, hit_tokens, hit_tokens_external = get_pod_metrics_info(pod_info)
             
             modify_aisbench_api(concurrency,str(output_len))
-            dst_file = generate_test_dataset(src_file_data, dst_dir)
+            dst_file = generate_test_dataset(src_file_data, dst_dir,
+                                             reverse_dataset=reverse_dataset,
+                                             block_size=reverse_block)
             # 执行测试命令
             subprocess.run(ais_bench_cmd, shell=True, check=True)
             logging.info(f"[完成] 全量数据集测试完成，结果保存在aisbench_result.csv")
@@ -459,14 +506,18 @@ if __name__ == '__main__':
         else:
             logging.info(f"[开始] 全量数据集测试")
             modify_aisbench_api(concurrency,str(output_len))
-            dst_file = generate_test_dataset(src_file_data, dst_dir)
+            dst_file = generate_test_dataset(src_file_data, dst_dir,
+                                             reverse_dataset=reverse_dataset,
+                                             block_size=reverse_block)
             subprocess.run(ais_bench_cmd, shell=True, check=True)
             logging.info(f"[完成] 全量数据集测试完成，结果保存在aisbench_result.csv")
 
     else:
         logging.info(f"[开始] 全量数据集测试")
         modify_aisbench_api(concurrency,str(output_len))
-        dst_file = generate_test_dataset(src_file_data, dst_dir)
+        dst_file = generate_test_dataset(src_file_data, dst_dir,
+                                         reverse_dataset=reverse_dataset,
+                                         block_size=reverse_block)
         if test_times > 1:
             for test_time in range(test_times):
                 logging.info(f"Execution rounds: {test_time + 1}")
